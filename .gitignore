@@ -110,6 +110,8 @@ ENV/
 .vscode
 *.swp
 
+courses/dl1/data
+
 # osx generated files
 .DS_Store
 .DS_Store?
