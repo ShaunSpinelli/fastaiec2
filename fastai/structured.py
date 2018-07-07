@@ -73,7 +73,7 @@ def get_sample(df,n):
     idxs = sorted(np.random.permutation(len(df))[:n])
     return df.iloc[idxs].copy()
 
-def add_datepart(df, fldname, drop=True):
+def add_datepart(df, fldname, drop=True, time=False):
     """add_datepart converts a column of df from a datetime64 to many columns containing
     the information from the date. This applies changes inplace.
 
@@ -83,6 +83,7 @@ def add_datepart(df, fldname, drop=True):
     fldname: A string that is the name of the date column you wish to expand.
         If it is not a datetime64 series, it will be converted to one with pd.to_datetime.
     drop: If true then the original date column will be removed.
+    time: If true time features: Hour, Minute, Second will be added.
 
     Examples:
     ---------
@@ -104,13 +105,18 @@ def add_datepart(df, fldname, drop=True):
     2   2000  3      11    13   0          73         False         False           False           False             False        False          952905600
     """
     fld = df[fldname]
-    if not np.issubdtype(fld.dtype, np.datetime64):
+    fld_dtype = fld.dtype
+    if isinstance(fld_dtype, pd.core.dtypes.dtypes.DatetimeTZDtype):
+        fld_dtype = np.datetime64
+
+    if not np.issubdtype(fld_dtype, np.datetime64):
         df[fldname] = fld = pd.to_datetime(fld, infer_datetime_format=True)
     targ_pre = re.sub('[Dd]ate$', '', fldname)
-    for n in ('Year', 'Month', 'Week', 'Day', 'Dayofweek', 'Dayofyear',
-            'Is_month_end', 'Is_month_start', 'Is_quarter_end', 'Is_quarter_start', 'Is_year_end', 'Is_year_start'):
-        df[targ_pre+n] = getattr(fld.dt,n.lower())
-    df[targ_pre+'Elapsed'] = fld.astype(np.int64) // 10**9
+    attr = ['Year', 'Month', 'Week', 'Day', 'Dayofweek', 'Dayofyear',
+            'Is_month_end', 'Is_month_start', 'Is_quarter_end', 'Is_quarter_start', 'Is_year_end', 'Is_year_start']
+    if time: attr = attr + ['Hour', 'Minute', 'Second']
+    for n in attr: df[targ_pre + n] = getattr(fld.dt, n.lower())
+    df[targ_pre + 'Elapsed'] = fld.astype(np.int64) // 10 ** 9
     if drop: df.drop(fldname, axis=1, inplace=True)
 
 def is_date(x): return np.issubdtype(x.dtype, np.datetime64)
@@ -431,7 +437,11 @@ def proc_df(df, y_fld=None, skip_flds=None, ignore_flds=None, do_scale=False, na
     df.drop(skip_flds, axis=1, inplace=True)
 
     if na_dict is None: na_dict = {}
+    else: na_dict = na_dict.copy()
+    na_dict_initial = na_dict.copy()
     for n,c in df.items(): na_dict = fix_missing(df, c, n, na_dict)
+    if len(na_dict_initial.keys()) > 0:
+        df.drop([a + '_na' for a in list(set(na_dict.keys()) - set(na_dict_initial.keys()))], axis=1, inplace=True)
     if do_scale: mapper = scale_vars(df, mapper)
     for n,c in df.items(): numericalize(df, c, n, max_n_cat)
     df = pd.get_dummies(df, dummy_na=True)
